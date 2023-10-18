@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
 """
-https://developers.google.com/sheets/api/quickstart/python
-pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+To display on a Mac: qlmanage -p urbanoasis.gif
+
+Data: https://docs.google.com/spreadsheets/d/1f3XV-DQJXmObCLrgZcIM_DzttEhxCsKLHVntJAIrs4M/edit#gid=1221641764
+
+
+Creating Masks with GIMP:
+* Use Path Tool to select area
+* ⌘-click on start point to close path
+* Select -> Invert to select the background
+* ⌘-X to cut the background
+* Select -> Invert to select the ROI
+* Use the Bucket Fill tool to fill the area with Blue
+* Export as PNG
+
 
 
 https://dev.to/kuba_szw/what-is-the-most-interesting-place-in-the-backyard-make-yourself-a-heatmap-2k7b
@@ -18,28 +31,6 @@ Matplotlib, Scipy
 https://github.com/LinShanify/HeatMap
 
 https://stackoverflow.com/questions/67117074/how-to-add-a-data-driven-location-based-heatmap-to-some-image
-
-
-Data: https://docs.google.com/spreadsheets/d/1f3XV-DQJXmObCLrgZcIM_DzttEhxCsKLHVntJAIrs4M/edit#gid=1221641764
-* need to have a mask array for each area
-* create an heatmap the size of the image initialised with zeros
-* for each mask apply a value within the mask based on the data for that area to the heatmap
-* merge the heatmap with the image
-
-
-GIMP
-Use Path Tool to select area
-Apple-click on start point to close path
-Select -> Invert to select the background
-Apple-X to cut the background
-Select -> Invert to select the ROI
-Use the Bucket Fill tool to fill the area with Blue
-Export as PNG
-
-Selec
-Ctrl-C to copy
-Ctrl-V to paste as new layer
-
 
 
 """
@@ -72,6 +63,10 @@ from googleapiclient.discovery import build
 
 
 def get_credentials():
+    """
+    https://developers.google.com/sheets/api/quickstart/python
+    pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+    """
     # If modifying these scopes, delete the file token.json.
     SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
@@ -257,7 +252,7 @@ for day in [
         heatmap_mask[0, 1] = max_value
 
         # Create the heatmap image
-        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_HOT)
+        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_JET)
 
         # Normalise the heatmap_mask and make binary
         cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
@@ -281,7 +276,7 @@ for day in [
 
         cv2.putText(
             merged,
-            f"{day} {time}",
+            f"{day:9} {time}",
             position,
             font,
             fontScale,
@@ -293,7 +288,7 @@ for day in [
         # cv2.imshow("MERGED", merged)
         # cv2.waitKey(0)
 
-imageio.mimsave("urbanoasis.gif", frames, fps=55)
+imageio.mimsave("urbanoasis.gif", frames, fps=3)
 
 sys.exit()
 
