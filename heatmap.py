@@ -67,15 +67,12 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
-# If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-
-# The ID and range of a sample spreadsheet.
 
 
 def get_credentials():
+    # If modifying these scopes, delete the file token.json.
+    SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -123,7 +120,7 @@ def create_dataframe(data):
     return df
 
 
-if False:
+def setup_dataframes():
     fnb_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A3:H20"))
     ck_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A28:H45"))
     trApt_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A57:H74"))
@@ -139,100 +136,12 @@ if False:
     # ua_data.to_pickle("ua_data.pkl")
     events_data.to_pickle("events_data.pkl")
 
-fnb_data = pd.read_pickle("fnb_data.pkl")
-ck_data = pd.read_pickle("ck_data.pkl")
-trApt_data = pd.read_pickle("trApt_data.pkl")
-cube_data = pd.read_pickle("cube_data.pkl")
-# ua_data = pd.readpickle("ua_data.pkl")
-events_data = pd.read_pickle("events_data.pkl")
-
-print(fnb_data)
-
-sys.exit()
-
 
 def mask_from_image(mask_image):
     mask_img = cv2.imread(mask_image)
-    # width, height = mask_img.shape[:2]
-    # print(f"GOT MASK {width}x{height}")
     imgray = cv2.cvtColor(mask_img, cv2.COLOR_BGR2GRAY)
     _, thresh_binary = cv2.threshold(imgray, 10, 255, cv2.THRESH_BINARY)
     return thresh_binary
-
-    # contours, _ = cv2.findContours(
-    #     thresh_binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
-    # )
-    # if len(contours) == 0:
-    #     raise RuntimeError("No contours found")
-    # contours = sorted(contours, key=cv2.contourArea, reverse=True)
-    # bounding_contour = contours[1]
-    # # cv2.drawContours(map_img, [bounding_contour], 0, (255, 0, 0), 3)
-    # # cv2.imshow("THRESH_BINARY", map_img)
-    # # cv2.waitKey(0)
-    # # print("BOUNDING ", bounding_contour)
-    # # floodFill might be quicker?
-    # mask = np.full((height, width), False, dtype=bool)
-    # mask_fill = True
-    # for h in range(height):
-    #     for w in range(width):
-    #         if cv2.pointPolygonTest(bounding_contour, (w, h), False) >= 0:
-    #         mask[h, w] = mask_fill
-    # return mask
-
-
-map_img = cv2.imread("/opt/heatmap/farm urban rooftop v1.png")
-width, height = map_img.shape[:2]
-mask_image1 = "/opt/heatmap/Area1.png"
-mask_image2 = "/opt/heatmap/Area2.png"
-mask_image3 = "/opt/heatmap/Area3.png"
-
-fAndBsales = {
-    "Monday": {
-        "08:00": 50,
-        "10:00": 150,
-        "09:00": 250,
-        "11:00": 1000,
-        "12:00": 1000,
-        "13:00": 1000,
-        "14:00": 300,
-        "15:00": 145,
-        "16:00": 500,
-        "17:00": 1000,
-        "18:00": 2000,
-        "19:00": 2450,
-        "20:00": 900,
-        "21:00": 200,
-        "22:00": 100,
-        "23:00": 50,
-        "00:00": 50,
-    }
-}
-
-
-# print(f"GOT {width}x{height}")
-
-
-# for' ij in np.ndindex(mask1.shape[:2]):
-#     print(ij, mask1[ij])# blu'e = np.full((height, width, 3), WHITE, np.uint8)
-
-# blue[mask > 0] = BLUE
-# map_img[mask1 == 0] = BLUE
-# map_img[mask2 == 0] = RED
-# map_img[mask3 == 0] = GREEN
-# np.where(mask1, BLUE, map_img)
-
-
-# Get min/max of data - needed to put all data on the same scale
-def dataMinMax(data):
-    min = 256
-    max = -1
-    for day, byhour in data.items():
-        for k, v in byhour.items():
-            if v < min:
-                min = v
-            if v > max:
-                max = v
-    return min, max
 
 
 def printCount(array):
@@ -247,45 +156,91 @@ def printCount(array):
     print("Count: ", count)
 
 
-# heatmap_image = np.zeros((width, height, 1), np.uint8)
-# heatmap_image = np.zeros((width, height), np.uint8)
-mask1 = mask_from_image(mask_image1)
-mask2 = mask_from_image(mask_image2)
-mask3 = mask_from_image(mask_image3)
+#
+# Set up Data
+#
+# setup_dataframes()
+fnb_data = pd.read_pickle("fnb_data.pkl")
+ck_data = pd.read_pickle("ck_data.pkl")
+# trApt_data = pd.read_pickle("trApt_data.pkl")
+cube_data = pd.read_pickle("cube_data.pkl")
+# ua_data = pd.readpickle("ua_data.pkl")
+# events_data = pd.read_pickle("events_data.pkl")
+
+# Get min and max values
+min_value = 0
+max_value = max(
+    fnb_data.to_numpy().max(), ck_data.to_numpy().max(), cube_data.to_numpy().max()
+)
+
+#
+# Set up Image data
+#
+map_img = cv2.imread("/opt/heatmap/farm urban rooftop v1.png")
+width, height = map_img.shape[:2]
+mask_fnb = mask_from_image("/opt/heatmap/FnB.png")
+mask_ck = mask_from_image("/opt/heatmap/CK.png")
+mask_cube = mask_from_image("/opt/heatmap/Cube.png")
 
 # Add data to heatmap
 # Mask: zero:255 - 255 is ROI
-heatmap_mask = np.full((width, height), 0, np.uint8)
-heatmap_mask[mask1 == 255] = 10
-heatmap_mask[mask2 == 255] = 100
-heatmap_mask[mask3 == 255] = 200
+# np.where(mask1, BLUE, map_img)
 
-# # Create alpha channel where uninteresting regions are transparent (0 in alpha is transparent)
-# alphaH = np.full((width, height), 0, np.uint8)
-# alphaH[heatmap_image != 255] = 255
-# cv2.imshow("THRESH_BINARY1", alphaH)
-# cv2.waitKey(0)
-# NB MIGHT NEED TO INVERT THIS
-
-# Colour the heatmap
-heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_JET)
-
-# Make heatmap_mask binary
-heatmap_mask[heatmap_mask > 0] = 255
-heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
-
-# Now black-out the area where we will put the heatmap
-bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
-
-# Take only region of heatmap from heatmap image.
-fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
-
-cv2.imshow("THRESH_BINARY1", map_img)
+cv2.imshow("FOO", map_img)
 cv2.waitKey(0)
 
-merged = cv2.add(bg, fg)
-cv2.imshow("THRESH_BINARY1", merged)
-cv2.waitKey(0)
+day = "Monday"
+for i, fnb in enumerate(fnb_data[day].items()):
+    timestamp = fnb[0]
+    time = timestamp.strftime("%H:%M")
+    fnb_data = fnb[1]
+
+    heatmap_mask = np.full((width, height), 0, np.uint8)
+    heatmap_mask[mask_fnb == 255] = fnb_data
+    heatmap_mask[mask_ck == 255] = ck_data[day][timestamp]
+    heatmap_mask[mask_cube == 255] = cube_data[day][timestamp]
+    # print(fnb_data, ck_data[day][timestamp], cube_data[day][timestamp])
+
+    # Add in the min and max values to the colour map is consistent across runs
+    heatmap_mask[0, 0] = min_value
+    heatmap_mask[0, 1] = max_value
+
+    # Create the heatmap image
+    heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_JET)
+
+    # Normalise the heatmap_mask and make binary
+    cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
+    heatmap_mask[heatmap_mask > 0] = 255
+    heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
+
+    # Now black-out the area where we will put the heatmap
+    bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
+
+    # Take only region of heatmap from heatmap image.
+    fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
+
+    merged = cv2.add(bg, fg)
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    position = (60, 50)
+    fontScale = 1
+    fontColor = (0, 0, 0)
+    thickness = 3
+    lineType = 2
+
+    cv2.putText(
+        merged,
+        f"{day} {time}",
+        position,
+        font,
+        fontScale,
+        fontColor,
+        thickness,
+        lineType,
+    )
+
+    cv2.imshow("MERGED", merged)
+    cv2.waitKey(0)
 sys.exit()
 
 # Add alpha channel to heatmap: https://stackoverflow.com/questions/32290096/python-opencv-add-alpha-channel-to-rgb-image
