@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+https://developers.google.com/sheets/api/quickstart/python
+pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+
 https://dev.to/kuba_szw/what-is-the-most-interesting-place-in-the-backyard-make-yourself-a-heatmap-2k7b
 
 https://gist.github.com/Tushar-N/58e9432db69ced0ac933b8e662bc2da2
@@ -43,6 +47,7 @@ Ctrl-V to paste as new layer
 import sys
 import cv2
 import numpy as np
+import pandas as pd
 
 # from shapely.geometry import Point
 # from shapely.geometry.polygon import Polygon
@@ -56,6 +61,94 @@ RED = (0, 0, 255)
 BLUE = (255, 0, 0)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+
+import os.path
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+# If modifying these scopes, delete the file token.json.
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
+# The ID and range of a sample spreadsheet.
+
+
+def get_credentials():
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+    return creds
+
+
+def get_data(range_name):
+    """Shows basic usage of the Sheets API.
+    Prints values from a sample spreadsheet.
+    """
+    SPREADSHEET_ID = "1f3XV-DQJXmObCLrgZcIM_DzttEhxCsKLHVntJAIrs4M"
+    creds = get_credentials()
+    service = build("sheets", "v4", credentials=creds)
+
+    # Call the Sheets API
+    sheet = service.spreadsheets()
+    result = (
+        sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=range_name).execute()
+    )
+    values = result.get("values", [])
+    if not values:
+        raise RuntimeError("No data found.")
+    return values
+
+
+def create_dataframe(data):
+    data[0][0] = "Time"
+    df = pd.DataFrame(data[1:], columns=data[0])
+    df["Time"] = pd.to_datetime(df["Time"], format="%H:%M")
+    df.set_index("Time", inplace=True)
+    df = df.replace("[\£,]", "", regex=True).astype(float)
+    return df
+
+
+if False:
+    fnb_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A3:H20"))
+    ck_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A28:H45"))
+    trApt_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A57:H74"))
+    trApt_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A57:H74"))
+    cube_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A82:H99"))
+    # ua_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A107:H124"))
+    events_data = create_dataframe(get_data(range_name="Sales Heat Map Data!A132:H149"))
+
+    fnb_data.to_pickle("fnb_data.pkl")
+    ck_data.to_pickle("ck_data.pkl")
+    trApt_data.to_pickle("trApt_data.pkl")
+    cube_data.to_pickle("cube_data.pkl")
+    # ua_data.to_pickle("ua_data.pkl")
+    events_data.to_pickle("events_data.pkl")
+
+fnb_data = pd.read_pickle("fnb_data.pkl")
+ck_data = pd.read_pickle("ck_data.pkl")
+trApt_data = pd.read_pickle("trApt_data.pkl")
+cube_data = pd.read_pickle("cube_data.pkl")
+# ua_data = pd.readpickle("ua_data.pkl")
+events_data = pd.read_pickle("events_data.pkl")
+
+print(fnb_data)
+
+sys.exit()
 
 
 def mask_from_image(mask_image):
@@ -183,14 +276,11 @@ heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
 
 # Now black-out the area where we will put the heatmap
 bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
-cv2.imshow("THRESH_BINARY1", bg)
-cv2.waitKey(0)
-
 
 # Take only region of heatmap from heatmap image.
 fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
 
-cv2.imshow("THRESH_BINARY1", fg)
+cv2.imshow("THRESH_BINARY1", map_img)
 cv2.waitKey(0)
 
 merged = cv2.add(bg, fg)
