@@ -44,10 +44,12 @@ Ctrl-V to paste as new layer
 
 """
 
+import math
 import sys
 import cv2
 import numpy as np
 import pandas as pd
+import imageio
 
 # from shapely.geometry import Point
 # from shapely.geometry.polygon import Polygon
@@ -156,6 +158,47 @@ def printCount(array):
     print("Count: ", count)
 
 
+# def color_map(input, dest, color_map):
+#   # https://stackoverflow.com/questions/28825520/is-there-something-like-matlabs-colorbar-for-opencv
+
+#   num_bar_w=30
+#   color_bar_w=10
+#   vline=10
+
+#   width, height = input.shape[:2]
+#   win_mat = np.full((width+num_bar_w+num_bar_w+vline, height,3), (255,255,255), np.uint8)
+
+#   mmin = int(input.min())
+#   mmax = input.max()
+#   max_int = math.ceil(mmax)
+#   input = input * (255.0/(mmax-mmin))
+#   input = input.astype(np.uint8)
+
+#   M = cv2.applyColorMap(input, color_map);
+#   M.copyTo(win_mat(cv2.Rect( 0, 0, width, height)))
+
+#   # Scale
+#   num_window = np.full((num_bar_w, height,3), (255,255,255), np.uint8)
+
+#   for i in range(max_int):
+#       j=i*input.rows/max_int
+#       cv2.putText(num_window, i, (5, num_window.rows-j-5),cv2.FONT_HERSHEY_SIMPLEX, 0.6 , (0,0,0), 1 , 2 , False)
+
+#   #color bar
+#   color_bar = np.full((color_bar_w, height,3), (255,255,255), np.uint8)
+#   cv::Mat cb;
+#   for i in range(height):
+#     for j in range(color_bar_w):
+#       v = 255-255*i/height;
+#       color_bar.at<cv::Vec3b>(i,j)=cv::Vec3b(v,v,v)
+
+#   color_bar.convertTo(color_bar, CV_8UC3);
+#   ccb = cv2.applyColorMap(color_bar, color_map);
+#   num_window.copyTo(win_mat(cv::Rect(input.cols+vline+color_bar_w, 0, num_bar_w, input.rows)));
+#   cb.copyTo(win_mat(cv::Rect(input.cols+vline, 0, color_bar_w, input.rows)));
+#   dest=win_mat.clone();
+
+
 #
 # Set up Data
 #
@@ -186,61 +229,72 @@ mask_cube = mask_from_image("/opt/heatmap/Cube.png")
 # Mask: zero:255 - 255 is ROI
 # np.where(mask1, BLUE, map_img)
 
-cv2.imshow("FOO", map_img)
-cv2.waitKey(0)
+frames = []
+for day in [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]:
+    for i, fnb in enumerate(fnb_data[day].items()):
+        timestamp = fnb[0]
+        time = timestamp.strftime("%H:%M")
+        heatmap_mask = np.full((width, height), 0, np.uint8)
+        heatmap_mask[mask_fnb == 255] = fnb[1] if fnb[1] > 0 else 1
+        heatmap_mask[mask_ck == 255] = (
+            ck_data[day][timestamp] if ck_data[day][timestamp] > 0 else 1
+        )
+        heatmap_mask[mask_cube == 255] = (
+            cube_data[day][timestamp] if cube_data[day][timestamp] > 0 else 1
+        )
+        # print(fdata, ck_data[day][timestamp], cube_data[day][timestamp])
 
-day = "Monday"
-for i, fnb in enumerate(fnb_data[day].items()):
-    timestamp = fnb[0]
-    time = timestamp.strftime("%H:%M")
-    fnb_data = fnb[1]
+        # Add in the min and max values to the colour map is consistent across runs
+        heatmap_mask[0, 0] = min_value
+        heatmap_mask[0, 1] = max_value
 
-    heatmap_mask = np.full((width, height), 0, np.uint8)
-    heatmap_mask[mask_fnb == 255] = fnb_data
-    heatmap_mask[mask_ck == 255] = ck_data[day][timestamp]
-    heatmap_mask[mask_cube == 255] = cube_data[day][timestamp]
-    # print(fnb_data, ck_data[day][timestamp], cube_data[day][timestamp])
+        # Create the heatmap image
+        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_HOT)
 
-    # Add in the min and max values to the colour map is consistent across runs
-    heatmap_mask[0, 0] = min_value
-    heatmap_mask[0, 1] = max_value
+        # Normalise the heatmap_mask and make binary
+        cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
+        heatmap_mask[heatmap_mask > 0] = 255
+        heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
 
-    # Create the heatmap image
-    heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_JET)
+        # Now black-out the area where we will put the heatmap
+        bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
 
-    # Normalise the heatmap_mask and make binary
-    cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
-    heatmap_mask[heatmap_mask > 0] = 255
-    heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
+        # Take only region of heatmap from heatmap image.
+        fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
 
-    # Now black-out the area where we will put the heatmap
-    bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
+        merged = cv2.add(bg, fg)
 
-    # Take only region of heatmap from heatmap image.
-    fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        position = (60, 50)
+        fontScale = 1
+        fontColor = (0, 0, 0)
+        thickness = 3
+        lineType = 2
 
-    merged = cv2.add(bg, fg)
+        cv2.putText(
+            merged,
+            f"{day} {time}",
+            position,
+            font,
+            fontScale,
+            fontColor,
+            thickness,
+            lineType,
+        )
+        frames.append(merged)
+        # cv2.imshow("MERGED", merged)
+        # cv2.waitKey(0)
 
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    position = (60, 50)
-    fontScale = 1
-    fontColor = (0, 0, 0)
-    thickness = 3
-    lineType = 2
+imageio.mimsave("urbanoasis.gif", frames, fps=55)
 
-    cv2.putText(
-        merged,
-        f"{day} {time}",
-        position,
-        font,
-        fontScale,
-        fontColor,
-        thickness,
-        lineType,
-    )
-
-    cv2.imshow("MERGED", merged)
-    cv2.waitKey(0)
 sys.exit()
 
 # Add alpha channel to heatmap: https://stackoverflow.com/questions/32290096/python-opencv-add-alpha-channel-to-rgb-image
