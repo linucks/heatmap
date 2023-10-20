@@ -15,6 +15,9 @@ Creating Masks with GIMP:
 * Use the Bucket Fill tool to fill the area with Blue
 * Export as PNG
 
+# Copying bits of images over using masks
+https://stackoverflow.com/questions/41572887/equivalent-of-copyto-in-python-opencv-bindings
+
 
 
 https://dev.to/kuba_szw/what-is-the-most-interesting-place-in-the-backyard-make-yourself-a-heatmap-2k7b
@@ -141,6 +144,44 @@ def mask_from_image(mask_image):
     return thresh_binary
 
 
+def mask_center(mask):
+    countors, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if len(countors) == 0:
+        raise RuntimeError("No countors found")
+    if len(countors) > 1:
+        raise RuntimeError("More than one countor found")
+    mask_countor = countors[0]
+    x, y, w, h = cv2.boundingRect(mask_countor)
+    return (int(x + w / 2), int(y + h / 2))
+
+
+def mask_add_text(text, mask_center, image):
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_color = (0, 0, 0)
+    thickness = 3
+    line_type = 2
+    bottom_left_origin = False
+
+    box_size, _ = cv2.getTextSize(text, font_face, font_scale, thickness)
+
+    px = int(mask_center[0] - (box_size[0] / 2))
+    py = int(mask_center[1])
+    position = (px, py)
+
+    cv2.putText(
+        image,
+        text,
+        position,
+        font_face,
+        font_scale,
+        font_color,
+        thickness,
+        line_type,
+        bottom_left_origin,
+    )
+
+
 def printCount(array):
     from collections import Counter
 
@@ -194,6 +235,80 @@ def printCount(array):
 #   dest=win_mat.clone();
 
 
+def add_colourbar(input=None):
+    if input is None:
+        width = 400
+        height = 300
+        input = np.random.randint(0, 255, (height, width, 3), np.uint8)
+
+    height, width, _ = input.shape
+    color_bar_w = 10
+    num_bar_w = 30
+    spacer = 10
+
+    win_mat = np.full(
+        (height, width + num_bar_w + num_bar_w + spacer, 3),
+        (255, 255, 255),
+        np.uint8,
+    )
+
+    imin = int(input.min())
+    imax = math.ceil(input.max())
+    # Normalise Data: https://stackoverflow.com/questions/46689428/convert-np-array-of-type-float64-to-type-uint8-scaling-values
+    # input = input * (255.0/(mmax-mmin))
+    # input = input.astype(np.uint8)
+
+    heatmap = cv2.applyColorMap(input, cv2.COLORMAP_JET)
+
+    # Copy heatmap into the blank win_mat in the rect area - so rect area is mask
+    win_mat[0:height, 0:width] = input
+    # mask = np.zeros(img.shape,np.uint8)
+    # mask[y:y+h,x:x+w] = img[y:y+h,x:x+w]
+    #  M.copyTo(win_mat(cv2.Rect( 0, 0, width, height)))
+
+    # color bar
+    color_bar = np.full((height, color_bar_w, 3), (255, 255, 255), np.uint8)
+    for i in range(height):
+        for j in range(color_bar_w):
+            v = 255 - 255 * i / height
+            color_bar[i, j] = (v, v, v)
+
+    # Scale
+    num_bar = np.full((height, num_bar_w, 3), (255, 255, 255), np.uint8)
+    # print("imax: ", imax)
+    offset = 10
+    for i in range(0, imax, imax // 10):
+        j = i * height / imax
+        # print("i:j: ", i, j)
+        # print((offset, int(j + 5)))
+        # print((5, int(height - j - 5)))
+        cv2.putText(
+            num_bar,
+            str(i),
+            (offset, int(j + offset)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            (0, 0, 0),
+            1,
+            2,
+            False,
+        )
+
+    # Copy in images
+    win_mat[0:height, 0:width] = input
+    istart = width + spacer
+    win_mat[0:height, istart : istart + color_bar_w] = color_bar
+    istart = istart + color_bar_w + spacer
+    win_mat[0:height, istart : istart + num_bar_w] = num_bar
+    return win_mat
+
+
+win_mat = add_colourbar()
+cv2.imshow("MERGED", win_mat)
+cv2.waitKey(0)
+
+sys.exit()
+
 #
 # Set up Data
 #
@@ -219,6 +334,11 @@ width, height = map_img.shape[:2]
 mask_fnb = mask_from_image("/opt/heatmap/FnB.png")
 mask_ck = mask_from_image("/opt/heatmap/CK.png")
 mask_cube = mask_from_image("/opt/heatmap/Cube.png")
+# Get centers of mask
+mask_fnb_center = mask_center(mask_fnb)
+mask_ck_center = mask_center(mask_ck)
+mask_cube_center = mask_center(mask_cube)
+
 
 # Add data to heatmap
 # Mask: zero:255 - 255 is ROI
@@ -227,32 +347,33 @@ mask_cube = mask_from_image("/opt/heatmap/Cube.png")
 frames = []
 for day in [
     "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
+    # "Tuesday",
+    # "Wednesday",
+    # "Thursday",
+    # "Friday",
+    # "Saturday",
+    # "Sunday",
 ]:
     for i, fnb in enumerate(fnb_data[day].items()):
         timestamp = fnb[0]
         time = timestamp.strftime("%H:%M")
         heatmap_mask = np.full((width, height), 0, np.uint8)
-        heatmap_mask[mask_fnb == 255] = fnb[1] if fnb[1] > 0 else 1
-        heatmap_mask[mask_ck == 255] = (
-            ck_data[day][timestamp] if ck_data[day][timestamp] > 0 else 1
-        )
-        heatmap_mask[mask_cube == 255] = (
-            cube_data[day][timestamp] if cube_data[day][timestamp] > 0 else 1
-        )
-        # print(fdata, ck_data[day][timestamp], cube_data[day][timestamp])
+        fnb_value = fnb[1]
+        heatmap_mask[mask_fnb == 255] = fnb_value if fnb_value > 0 else 1
+        ck_value = ck_data[day][timestamp]
+        heatmap_mask[mask_ck == 255] = ck_value if ck_value > 0 else 1
+        cube_value = cube_data[day][timestamp]
+        heatmap_mask[mask_cube == 255] = cube_value if cube_value > 0 else 1
 
         # Add in the min and max values to the colour map is consistent across runs
         heatmap_mask[0, 0] = min_value
         heatmap_mask[0, 1] = max_value
 
+        print(f"FNB: {fnb_value} CK: {ck_value} Cube: {cube_value}")
+        printCount(heatmap_mask)
+
         # Create the heatmap image
-        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_JET)
+        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_BONE)
 
         # Normalise the heatmap_mask and make binary
         cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
@@ -267,28 +388,33 @@ for day in [
 
         merged = cv2.add(bg, fg)
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_face = cv2.FONT_HERSHEY_SIMPLEX
         position = (60, 50)
-        fontScale = 1
-        fontColor = (0, 0, 0)
+        font_scale = 1
+        font_color = (0, 0, 0)
         thickness = 3
-        lineType = 2
+        line_type = 2
 
         cv2.putText(
             merged,
             f"{day:9} {time}",
             position,
-            font,
-            fontScale,
-            fontColor,
+            font_face,
+            font_scale,
+            font_color,
             thickness,
-            lineType,
+            line_type,
         )
-        frames.append(merged)
-        # cv2.imshow("MERGED", merged)
-        # cv2.waitKey(0)
 
-imageio.mimsave("urbanoasis.gif", frames, fps=3)
+        mask_add_text(str(fnb_value), mask_fnb_center, merged)
+        mask_add_text(str(ck_value), mask_ck_center, merged)
+        mask_add_text(str(cube_value), mask_cube_center, merged)
+
+        frames.append(merged)
+        cv2.imshow("MERGED", merged)
+        cv2.waitKey(0)
+
+# imageio.mimsave("urbanoasis.gif", frames, fps=3)
 
 sys.exit()
 
