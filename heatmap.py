@@ -158,7 +158,7 @@ def mask_center(mask):
 def mask_add_text(text, mask_center, image):
     font_face = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1
-    font_color = (0, 0, 0)
+    font_color = (255, 0, 0)
     thickness = 3
     line_type = 2
     bottom_left_origin = False
@@ -194,56 +194,15 @@ def printCount(array):
     print("Count: ", count)
 
 
-# def color_map(input, dest, color_map):
-#   # https://stackoverflow.com/questions/28825520/is-there-something-like-matlabs-colorbar-for-opencv
-
-#   num_bar_w=30
-#   color_bar_w=10
-#   vline=10
-
-#   width, height = input.shape[:2]
-#   win_mat = np.full((width+num_bar_w+num_bar_w+vline, height,3), (255,255,255), np.uint8)
-
-#   mmin = int(input.min())
-#   mmax = input.max()
-#   max_int = math.ceil(mmax)
-#   input = input * (255.0/(mmax-mmin))
-#   input = input.astype(np.uint8)
-
-#   M = cv2.applyColorMap(input, color_map);
-#   M.copyTo(win_mat(cv2.Rect( 0, 0, width, height)))
-
-#   # Scale
-#   num_window = np.full((num_bar_w, height,3), (255,255,255), np.uint8)
-
-#   for i in range(max_int):
-#       j=i*input.rows/max_int
-#       cv2.putText(num_window, i, (5, num_window.rows-j-5),cv2.FONT_HERSHEY_SIMPLEX, 0.6 , (0,0,0), 1 , 2 , False)
-
-#   #color bar
-#   color_bar = np.full((color_bar_w, height,3), (255,255,255), np.uint8)
-#   cv::Mat cb;
-#   for i in range(height):
-#     for j in range(color_bar_w):
-#       v = 255-255*i/height;
-#       color_bar.at<cv::Vec3b>(i,j)=cv::Vec3b(v,v,v)
-
-#   color_bar.convertTo(color_bar, CV_8UC3);
-#   ccb = cv2.applyColorMap(color_bar, color_map);
-#   num_window.copyTo(win_mat(cv::Rect(input.cols+vline+color_bar_w, 0, num_bar_w, input.rows)));
-#   cb.copyTo(win_mat(cv::Rect(input.cols+vline, 0, color_bar_w, input.rows)));
-#   dest=win_mat.clone();
-
-
-def add_colourbar(input=None):
-    if input is None:
-        width = 400
-        height = 300
-        input = np.random.randint(0, 255, (height, width, 3), np.uint8)
+def add_colourbar(input, imax, colour_map=cv2.COLORMAP_JET):
+    # if input is None:
+    #     width = 400
+    #     height = 300
+    #     input = np.random.randint(0, 255, (height, width, 3), np.uint8)
 
     height, width, _ = input.shape
-    color_bar_w = 10
-    num_bar_w = 30
+    color_bar_w = 20
+    num_bar_w = 40
     spacer = 10
 
     win_mat = np.full(
@@ -251,63 +210,56 @@ def add_colourbar(input=None):
         (255, 255, 255),
         np.uint8,
     )
+    # if imin is None:
+    #     heat_map = cv2.applyColorMap(input, colour_map)
+    #     imin = int(heat_map.min())
+    #     imax = math.ceil(heat_map.max())
 
-    imin = int(input.min())
-    imax = math.ceil(input.max())
-    # Normalise Data: https://stackoverflow.com/questions/46689428/convert-np-array-of-type-float64-to-type-uint8-scaling-values
-    # input = input * (255.0/(mmax-mmin))
-    # input = input.astype(np.uint8)
-
-    heatmap = cv2.applyColorMap(input, cv2.COLORMAP_JET)
+    # # Normalise Data: https://stackoverflow.com/questions/46689428/convert-np-array-of-type-float64-to-type-uint8-scaling-values
+    # info = np.iinfo(data.dtype)  # Get the information of the incoming image type
+    # data = data.astype(np.float64) / info.max  # normalize the data to 0 - 1
+    # data = 255 * data  # Now scale by 255
 
     # Copy heatmap into the blank win_mat in the rect area - so rect area is mask
     win_mat[0:height, 0:width] = input
-    # mask = np.zeros(img.shape,np.uint8)
-    # mask[y:y+h,x:x+w] = img[y:y+h,x:x+w]
-    #  M.copyTo(win_mat(cv2.Rect( 0, 0, width, height)))
 
     # color bar
-    color_bar = np.full((height, color_bar_w, 3), (255, 255, 255), np.uint8)
+    colour_bar = np.full((height, color_bar_w, 3), (255, 255, 255), np.uint8)
     for i in range(height):
         for j in range(color_bar_w):
             v = 255 - 255 * i / height
-            color_bar[i, j] = (v, v, v)
+            colour_bar[i, j] = (v, v, v)
+    colour_bar = cv2.applyColorMap(colour_bar, colour_map)
 
     # Scale
     num_bar = np.full((height, num_bar_w, 3), (255, 255, 255), np.uint8)
-    # print("imax: ", imax)
     offset = 10
+    font_scale = 0.3
+    font_color = (0, 0, 0)
+    thickness = 1
+    line_type = 2
     for i in range(0, imax, imax // 10):
-        j = i * height / imax
-        # print("i:j: ", i, j)
-        # print((offset, int(j + 5)))
-        # print((5, int(height - j - 5)))
+        j = i * (height - offset) / imax
         cv2.putText(
             num_bar,
             str(i),
             (offset, int(j + offset)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.3,
-            (0, 0, 0),
-            1,
-            2,
+            font_scale,
+            font_color,
+            thickness,
+            line_type,
             False,
         )
 
     # Copy in images
     win_mat[0:height, 0:width] = input
     istart = width + spacer
-    win_mat[0:height, istart : istart + color_bar_w] = color_bar
+    win_mat[0:height, istart : istart + color_bar_w] = colour_bar
     istart = istart + color_bar_w + spacer
     win_mat[0:height, istart : istart + num_bar_w] = num_bar
     return win_mat
 
-
-win_mat = add_colourbar()
-cv2.imshow("MERGED", win_mat)
-cv2.waitKey(0)
-
-sys.exit()
 
 #
 # Set up Data
@@ -394,7 +346,6 @@ for day in [
         font_color = (0, 0, 0)
         thickness = 3
         line_type = 2
-
         cv2.putText(
             merged,
             f"{day:9} {time}",
@@ -409,6 +360,9 @@ for day in [
         mask_add_text(str(fnb_value), mask_fnb_center, merged)
         mask_add_text(str(ck_value), mask_ck_center, merged)
         mask_add_text(str(cube_value), mask_cube_center, merged)
+
+        # Add colour bar
+        merged = add_colourbar(merged, int(max_value), cv2.COLORMAP_BONE)
 
         frames.append(merged)
         cv2.imshow("MERGED", merged)
