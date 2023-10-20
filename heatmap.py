@@ -45,19 +45,6 @@ import numpy as np
 import pandas as pd
 import imageio
 
-# from shapely.geometry import Point
-# from shapely.geometry.polygon import Polygon
-# polygon = Polygon(bc)
-# point = Point(h, w)
-# if polygon.contains(point):
-
-
-GREEN = (0, 255, 0)
-RED = (0, 0, 255)
-BLUE = (255, 0, 0)
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-
 import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -158,8 +145,8 @@ def mask_center(mask):
 def mask_add_text(text, mask_center, image):
     font_face = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1
-    font_color = (255, 0, 0)
-    thickness = 3
+    font_color = (0, 0, 255)
+    thickness = 2
     line_type = 2
     bottom_left_origin = False
 
@@ -190,6 +177,8 @@ def printCount(array):
     for w in range(width):
         for h in range(height):
             v = array[w, h]
+            if type(v) == np.ndarray:
+                v = str(v)
             count[v] += 1
     print("Count: ", count)
 
@@ -202,7 +191,7 @@ def add_colourbar(input, imax, colour_map=cv2.COLORMAP_JET):
 
     height, width, _ = input.shape
     color_bar_w = 20
-    num_bar_w = 40
+    num_bar_w = 50
     spacer = 10
 
     win_mat = np.full(
@@ -227,14 +216,15 @@ def add_colourbar(input, imax, colour_map=cv2.COLORMAP_JET):
     colour_bar = np.full((height, color_bar_w, 3), (255, 255, 255), np.uint8)
     for i in range(height):
         for j in range(color_bar_w):
-            v = 255 - 255 * i / height
+            # v = 255 - 255 * i / height
+            v = 255 * i / height
             colour_bar[i, j] = (v, v, v)
     colour_bar = cv2.applyColorMap(colour_bar, colour_map)
 
     # Scale
     num_bar = np.full((height, num_bar_w, 3), (255, 255, 255), np.uint8)
     offset = 10
-    font_scale = 0.3
+    font_scale = 0.4
     font_color = (0, 0, 0)
     thickness = 1
     line_type = 2
@@ -261,6 +251,7 @@ def add_colourbar(input, imax, colour_map=cv2.COLORMAP_JET):
     return win_mat
 
 
+COLOUR_MAP = cv2.COLORMAP_COOL
 #
 # Set up Data
 #
@@ -299,45 +290,47 @@ mask_cube_center = mask_center(mask_cube)
 frames = []
 for day in [
     "Monday",
-    # "Tuesday",
-    # "Wednesday",
-    # "Thursday",
-    # "Friday",
-    # "Saturday",
-    # "Sunday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
 ]:
     for i, fnb in enumerate(fnb_data[day].items()):
         timestamp = fnb[0]
         time = timestamp.strftime("%H:%M")
-        heatmap_mask = np.full((width, height), 0, np.uint8)
+        heatmap_mask = np.full((width, height), 0.0, np.double)
         fnb_value = fnb[1]
-        heatmap_mask[mask_fnb == 255] = fnb_value if fnb_value > 0 else 1
+        # fnb_value = 100
+        heatmap_mask[mask_fnb == 255] = fnb_value
         ck_value = ck_data[day][timestamp]
-        heatmap_mask[mask_ck == 255] = ck_value if ck_value > 0 else 1
+        # ck_value = 200
+        heatmap_mask[mask_ck == 255] = ck_value
         cube_value = cube_data[day][timestamp]
-        heatmap_mask[mask_cube == 255] = cube_value if cube_value > 0 else 1
+        # cube_value = 300
+        heatmap_mask[mask_cube == 255] = cube_value
 
-        # Add in the min and max values to the colour map is consistent across runs
-        heatmap_mask[0, 0] = min_value
-        heatmap_mask[0, 1] = max_value
-
-        print(f"FNB: {fnb_value} CK: {ck_value} Cube: {cube_value}")
-        printCount(heatmap_mask)
+        # Add in the max value so the colour map is consistent across runs
+        heatmap_mask[0, 0] = max_value
+        # print(f"FNB: {fnb_value} CK: {ck_value} Cube: {cube_value}")
+        # printCount(heatmap_mask)
 
         # Create the heatmap image
-        heatmap_img = cv2.applyColorMap(heatmap_mask, cv2.COLORMAP_BONE)
+        cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
+        heatmap_mask = heatmap_mask.astype(np.uint8)
+        # printCount(heatmap_mask)
+        heatmap_img = cv2.applyColorMap(heatmap_mask, COLOUR_MAP)
 
         # Normalise the heatmap_mask and make binary
-        cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
+        # cv2.normalize(heatmap_mask, heatmap_mask, 0, 255, cv2.NORM_MINMAX)
         heatmap_mask[heatmap_mask > 0] = 255
         heatmap_mask_inv = cv2.bitwise_not(heatmap_mask)
 
         # Now black-out the area where we will put the heatmap
         bg = cv2.bitwise_and(map_img, map_img, mask=heatmap_mask_inv)
-
         # Take only region of heatmap from heatmap image.
         fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
-
         merged = cv2.add(bg, fg)
 
         font_face = cv2.FONT_HERSHEY_SIMPLEX
@@ -356,20 +349,21 @@ for day in [
             thickness,
             line_type,
         )
-
-        mask_add_text(str(fnb_value), mask_fnb_center, merged)
-        mask_add_text(str(ck_value), mask_ck_center, merged)
-        mask_add_text(str(cube_value), mask_cube_center, merged)
+        if fnb_value > 0:
+            mask_add_text(str(int(fnb_value)), mask_fnb_center, merged)
+        if ck_value > 0:
+            mask_add_text(str(int(ck_value)), mask_ck_center, merged)
+        if cube_value > 0:
+            mask_add_text(str(int(cube_value)), mask_cube_center, merged)
 
         # Add colour bar
-        merged = add_colourbar(merged, int(max_value), cv2.COLORMAP_BONE)
+        merged = add_colourbar(merged, int(max_value), COLOUR_MAP)
 
         frames.append(merged)
-        cv2.imshow("MERGED", merged)
-        cv2.waitKey(0)
+        # cv2.imshow("MERGED", merged)
+        # cv2.waitKey(0)
 
-# imageio.mimsave("urbanoasis.gif", frames, fps=3)
-
+imageio.mimsave("urbanoasis.gif", frames, fps=1)
 sys.exit()
 
 # Add alpha channel to heatmap: https://stackoverflow.com/questions/32290096/python-opencv-add-alpha-channel-to-rgb-image
