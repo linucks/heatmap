@@ -288,6 +288,10 @@ mask_cube_center = mask_center(mask_cube)
 # np.where(mask1, BLUE, map_img)
 
 frames = []
+previous = None
+fnb_value_prev = None
+ck_value_prev = None
+cube_value_prev = None
 for day in [
     "Monday",
     "Tuesday",
@@ -298,6 +302,7 @@ for day in [
     "Sunday",
 ]:
     for i, fnb in enumerate(fnb_data[day].items()):
+        print(f"Day: {day} {i} {fnb}")
         timestamp = fnb[0]
         time = timestamp.strftime("%H:%M")
         heatmap_mask = np.full((width, height), 0.0, np.double)
@@ -333,6 +338,9 @@ for day in [
         fg = cv2.bitwise_and(heatmap_img, heatmap_img, mask=heatmap_mask)
         merged = cv2.add(bg, fg)
 
+        # Add colour bar
+        merged = add_colourbar(merged, int(max_value), COLOUR_MAP)
+
         font_face = cv2.FONT_HERSHEY_SIMPLEX
         position = (60, 50)
         font_scale = 1
@@ -349,21 +357,41 @@ for day in [
             thickness,
             line_type,
         )
+
+        merged_notext = merged.copy()
         if fnb_value > 0:
             mask_add_text(str(int(fnb_value)), mask_fnb_center, merged)
+            if fnb_value == fnb_value_prev:
+                mask_add_text(str(int(fnb_value)), mask_fnb_center, merged_notext)
+        fnb_value_prev = fnb_value
         if ck_value > 0:
             mask_add_text(str(int(ck_value)), mask_ck_center, merged)
+            if ck_value == ck_value_prev:
+                mask_add_text(str(int(fnb_value)), mask_ck_center, merged_notext)
+        ck_value_prev = ck_value
         if cube_value > 0:
             mask_add_text(str(int(cube_value)), mask_cube_center, merged)
+            if cube_value == cube_value_prev:
+                mask_add_text(str(int(fnb_value)), mask_cube_center, merged_notext)
+        cube_value_prev = cube_value
 
-        # Add colour bar
-        merged = add_colourbar(merged, int(max_value), COLOUR_MAP)
-
-        frames.append(merged)
-        # cv2.imshow("MERGED", merged)
+        if previous is not None:
+            for ifade in range(10):
+                alpha = ifade / 10
+                beta = 1 - alpha
+                if ifade > 5:
+                    merged = merged_notext
+                merged_ = cv2.addWeighted(merged, alpha, previous, beta, 0)
+                # cv2.imshow("MERGED2", merged_)
+                # cv2.waitKey(0)
+                frames.append(merged_)
+        else:
+            frames.append(merged)
+        previous = merged
+        # cv2.imshow("MERGED1", merged)
         # cv2.waitKey(0)
 
-imageio.mimsave("urbanoasis.gif", frames, fps=1)
+imageio.mimsave("urbanoasis.gif", frames, fps=10)
 sys.exit()
 
 # Add alpha channel to heatmap: https://stackoverflow.com/questions/32290096/python-opencv-add-alpha-channel-to-rgb-image
